@@ -1,0 +1,98 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fio-benchmark-config-map
+data:
+  fio-benchmark.fio: |
+    [random-read]
+    ioengine=libaio
+    iodepth=16
+    blocksize=4k
+    readwrite=randread
+    numjobs=1
+    size=1G
+    runtime=60s
+    time_based
+    directory=/mnt/benchmark
+
+    [random-write]
+    ioengine=libaio
+    iodepth=16
+    blocksize=4k
+    readwrite=randwrite
+    numjobs=1
+    size=1G
+    runtime=60s
+    time_based
+    directory=/mnt/benchmark
+
+    [seq-read]
+    ioengine=sync
+    iodepth=16
+    blocksize=4k
+    readwrite=read
+    numjobs=1
+    size=1G
+    runtime=60s
+    time_based
+    directory=/mnt/benchmark
+
+    [seq-write]
+    ioengine=sync
+    iodepth=16
+    blocksize=4k
+    readwrite=write
+    numjobs=1
+    size=1G
+    runtime=60s
+    time_based
+    directory=/mnt/benchmark
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: fio-gp2-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi  # Modify this size as per your need
+  storageClassName: gp3 # This points to a pre-configured local storage class (if using local path volume)
+---  
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: fio-benchmark
+spec:
+  template:
+    spec:
+      containers:
+      - name: fio
+        image: mayadata/fio:latest  # Use the pre-built fio image
+        command: ["tail", "-f", "/dev/null"]
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "2Gi"
+        volumeMounts:
+          - mountPath: /fio-benchmark.fio
+            name: fio-benchmark-config
+            subPath: fio-benchmark.fio
+          - mountPath: /mnt/benchmark
+            name: benchmark-pvc  # The PVC you want to test
+          - mountPath: /tmp/results
+            name: results-volume
+      restartPolicy: Never
+      volumes:
+        - name: fio-benchmark-config
+          configMap:
+            name: fio-benchmark-config-map
+        - name: benchmark-pvc
+          persistentVolumeClaim:
+            claimName: fio-gp2-pvc  # Replace with your PVC name
+        - name: results-volume
+          emptyDir: {}
+  backoffLimit: 4
